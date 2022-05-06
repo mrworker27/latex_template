@@ -1,0 +1,17 @@
+#!/bin/zsh
+
+compile() {
+    cd $1
+    rm -rf result
+    mkdir result
+    pdflatex -halt-on-error --output-directory=result -jobname=file main.tex
+    pdflatex -halt-on-error --output-directory=result -jobname=file main.tex
+    cd -
+}
+
+show(){
+    realpath $1/result/file.pdf
+    open $1/result/file.pdf
+}
+
+"$@"
