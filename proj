@@ -1,16 +1,17 @@
 #!/bin/zsh
 
-compile(){
-    realpath $1
+compile() {
+    cd $1
     rm -rf result
     mkdir result
-    pdflatex -halt-on-error --output-directory=result -jobname=file $1
-    pdflatex -halt-on-error --output-directory=result -jobname=file $1
+    pdflatex -halt-on-error --output-directory=result -jobname=file main.tex
+    pdflatex -halt-on-error --output-directory=result -jobname=file main.tex
+    cd -
 }
 
 show(){
-    realpath ./result/file.pdf
-    open ./result/file.pdf
+    realpath $1/result/file.pdf
+    open $1/result/file.pdf
 }
 
 "$@"
