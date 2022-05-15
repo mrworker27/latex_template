@@ -93,6 +93,57 @@
 
 % Нумерация только тех формул, на которые в тексте присутствует ссылка
 \usepackage{autonum}
+\usepackage{csquotes}
+\usepackage[dvipsnames,table,xcdraw]{xcolor}
+
+% Лисинги кода, стили подсветки синтаксиса
+\usepackage{listings}
+\lstdefinestyle{customcpp} {
+    language=C++,
+    frame=single,
+    tabsize=4,
+    showstringspaces=false,
+    %numbers=left,
+    %upquote=true,
+    commentstyle=\color{OliveGreen},
+    keywordstyle=\color{violet},
+    stringstyle=\color{red},
+    basicstyle=\small\ttfamily, % basic font setting
+    emph={int,char,double,float,unsigned,void,bool},
+    emphstyle={\color{blue}},
+    %escapechar=\&,
+    % keyword highlighting
+    classoffset=1, % starting new class
+    otherkeywords={>,<,.,-,!,=,~,\&},
+    morekeywords={>,<,.,-,!,=,~},
+    keywordstyle=\color{orange},
+    classoffset=0,
+    belowskip=1.5em,
+    aboveskip=1.5em
+}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+\lstdefinestyle{customsql} {
+    language=SQL,
+    basicstyle={\small\ttfamily},
+    belowskip=1.5em,
+    aboveskip=1.5em,
+    frame=single,
+    breakatwhitespace=true,
+    breaklines=true,
+    classoffset=0,
+    columns=flexible,
+    commentstyle=\color{dkgreen},
+    keywordstyle=\color{blue},
+    numbers=none, %If you want line numbers, set `numbers=left`
+    numberstyle=\tiny\color{gray},
+    showstringspaces=false,
+    stringstyle=\color{mauve},
+    tabsize=3,
+    xleftmargin =1em
+}
 
 % Список литературы
 \renewenvironment{thebibliography}[1]

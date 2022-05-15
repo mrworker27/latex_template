@@ -1,12 +1,142 @@
 \section{Разбор запроса в ClickHouse}
-\subsection{Устройство ClickHouse AST}
-Про так по факту реализованы вершинки дерева IAS и сопутсвтующее
+ClickHouse поддерживает собственный диалект SQL. Для разбора исходного текстового запроса в ClickHouse используется лексер и парсер, написанные вручную на C++. В рамках данной работы в основном будут использованы знания об устройстве ClickHouse AST, но для полноты картины ниже представлен краткий обзор подхода ClickHouse к разбору рапроса. 
 
-\subsection{Устройство парсера в ClickHouse}
-Про то, как в оригинальном ClickHouse строится AST по потоку токенов
+К описанию архитекуры приложены фрагменты кода описывающие архитектуру. Для большей лаконичности, код упрощен и не содержит строк, не существенных для общего понимания архитектуры. Полноценные версии используемых классов и методов могут быть найдены в репозитории ClickHouse.  
+
+\subsection{Лексический анализ в ClickHouse}
+
+Лексический анализ в ClickHouse осуществляется объектом класса \lstinline[style=customcpp]|Lexer| (см. Листинг \ref{ch:lexer_cpp}), конструируимщся от указателей на границы исходного запроса. Основным методом лексера является \lstinline[style=customcpp]|Lexer::nextToken|, который итеративно возвращает последовательность токенов. Сам алгоритм токенизации имплементирован в методе \lstinline[style=customcpp]|Lexer::nextTokenImpl|. Токен представляет собой структуру (см. Листинг \ref{ch:token_cpp}), содержащую тип токена (поле \lstinline[style=customcpp]|Token::type|) и подстроку исходного запроса, которой он соответствует (поля \lstinline[style=customcpp]|Token::begin|, \lstinline[style=customcpp]|Token::end|). Полученная последовательность токенов в дальнешем используется парсером для конструирования ClickHouse AST.
+
+\pagebreak
+
+\begin{lstlisting}[style=customcpp, label={ch:lexer_cpp}, caption={Структура лексера в ClickHouse}, captionpos=b]
+class Lexer
+{
+public:
+    Lexer(const char * begin_, const char * end_,
+        size_t max_query_size_ = 0);
+    Token nextToken();
+private:
+    const char * const begin;
+    const char * pos;
+    const char * const end;
+
+    Token nextTokenImpl();
+};
+\end{lstlisting}
+
+\begin{lstlisting}[style=customcpp, label={ch:token_cpp}, caption={Структура токена в ClickHouse}, captionpos=b]
+enum class TokenType
+{
+    Number,
+    QuotedIdentifier,
+    Plus,
+    // etc.
+};
+
+struct Token
+{
+    TokenType type;
+    const char * begin;
+    const char * end;
+        
+    // methods (helpers) ...
+};
+\end{lstlisting}
+
+\subsection{Устройство ClickHouse AST}
+Абстрактное синтаксическое дерево в ClickHouse состоит из вершин, реализующих интерфейс \lstinline[style=customcpp]|IAST|, содержащий информацию о связях с непосредственными потомками (дочерними вершинами) и вспомогательные методы, общие для всех вершин (см. Листинг \ref{ch:IAST_cpp}). \lstinline[style=customcpp]|ASTPtr| - умный указатель на вершину произвольного типа (тип \lstinline[style=customcpp]|std::shared_ptr<IAST>|)
+
+\begin{lstlisting}[style=customcpp, label={ch:IAST_cpp}, caption={Структура интерфейса IAST}, captionpos=b]
+class IAST;
+
+using ASTPtr = std::shared_ptr<IAST>;
+
+class IAST
+{
+public:
+    std::vector<ASTPtr> children;
+    virtual ASTPtr clone() const = 0;
+    std::string dumpTree(size_t indent = 0) const;
+    
+    // other common methods
+};
+\end{lstlisting}
+
+Поскольку \lstinline[style=customcpp]|IAST|является абстрактным классом, в действительности классы вершин AST наследуют \lstinline[style=customcpp]|IAST|. В качестве примера рассмотрим \lstinline[style=customcpp]|ASTLiteral|, описывающий вершину, которая соответствует \textit{литералу} (числу, строке, \textit{TRUE}, \textit{FALSE}, \textit{NULL} и т. д.)
+
+\pagebreak
+
+\begin{lstlisting}[style=customcpp, label={ch:ASTLiteral_cpp}, caption={Наследник интерфейса IAST на примере литерала}, captionpos=b]
+class ASTWithAlias : public IAST
+{
+public:
+    String alias;
+
+    // methods (helpers)
+};
+
+class ASTLiteral : public ASTWithAlias
+{
+public:
+    explicit ASTLiteral(Field value_) 
+            : value(std::move(value_)) {}
+    Field value; // can contain int, float, string, NULL etc.
+
+    // methods (helpers)
+};
+\end{lstlisting}
+
+Выше (см. Листинг \ref{ch:ASTLiteral_cpp}) приведена структура двух классов, наследующих \lstinline[style=customcpp]|IAST|. \lstinline[style=customcpp]|ASTWithAlias| описывает интерфейс сущности, которая может иметь \textit{alias} (например \textit{SELECT 1 as alias\_one}). Его, в свою очередь, наследует класс \lstinline[style=customcpp]|ASTLiteral|, содержащий поле \lstinline[style=customcpp]|ASTLiteral::value|, которое может хранить значение литерала произвольного типа (из списка поддерживаемых ClickHouse).
+
+Всего в кодовой базе ClickHouse описано более ста различных типов вершин, каждый из которых отвечает за специфичную часть запроса
+
+\subsection{Синтаксический анализ в ClickHouse}
+Для конструирования AST ClickHouse использует парсер, представляющий собой множество классов, реализующих интерфейс \lstinline[style=customcpp]|IParser| (см. Листинг \ref{ch:IParser_cpp}). Разбор осуществляется посредством метода \lstinline[style=customcpp]|IParser::parse|, принимающий на вход итератор по потоку токенов (структура \lstinline[style=customcpp]|IParser::Pos|) и записывающий сконструированое AST во второй аргумент.
+
+Поскольку \lstinline[style=customcpp]|IParser| является абстрактным классом, в действительности разбор осуществляется объектами классов, наследующих \lstinline[style=customcpp]|IParser|. Архитектура парсера устроена так, чтобы приблизительно соответствовать имеющимся типам вершин AST (описаны выше).
+
+\begin{lstlisting}[style=customcpp, label={ch:IParser_cpp}, caption={Интерфейс парсера}, captionpos=b]
+class IParser
+{
+public:
+    // can iterate over stream of tokens
+    struct Pos : TokenIterator;
+    virtual bool parse(Pos & pos, ASTPtr & node,
+            Expected & expected) = 0;
+
+    // methods (helpers)
+};
+\end{lstlisting}
 
 \subsection{Интерпретация ClickHouse AST}
-Дерево никуда не девается, а отправляется в интерпретатор, где согласно нему исполняется запрос
+Результатом синтаксического анализа является \lstinline[style=customcpp]|ASTPtr|, который соответствует корню дерева, соответсвующего полученному запросу. После конструирования, AST используется \textit{интерпретатором} для непосредственного исполнения запроса. По аналогии с парсерами, интерпретаторы наследуют класс \lstinline[style=customcpp]|IInterpreter| и примерно соответсвуют имеющимся типам AST. Интерфейс \lstinline[style=customcpp]|IInterpreter| содержит метод \lstinline[style=customcpp]|IInterpreter::execute|, осуществляющий исполнение запроса, а каждый конкретный интерпретатор конструируется от \lstinline[style=customcpp]|ASTPtr|, данные которого будут использованы в процессе исполнения. Ниже приведена примерная архитектура интерфейса интерпретатора и реализации интерпретатора запроса lstinline[style=customsql]DROP| (см. Листинг \ref{ch:IInterpreter_cpp}).
 
+\pagebreak
+
+\begin{lstlisting}[style=customcpp, label={ch:IInterpreter_cpp}, caption={Интерфейс интерпретатора и пример его наследника}, captionpos=b]
+class IInterpreter
+{
+public:
+    virtual BlockIO execute() = 0;
+    
+    // other common methods
+}
+
+class InterpreterDropQuery : 
+    public IInterpreter, WithMutableContext
+{
+public:
+    InterpreterDropQuery(const ASTPtr & query_ptr_, 
+        ContextMutablePtr context_);
+    
+    /// Drop table or database.
+    BlockIO execute() override;
+
+    // methods (helpers)
+};
+\end{lstlisting}
+
+Интерпретатор запроса работает с ClickHouse AST, поэтому задача по внедрению поддержки диалекта MySQL сводится к тому, чтобы по запросу на диалекте MySQL получить ClickHouse AST, соответствующее ему \textit{семантически} (результат исполнения адекватен запросу).
 
 \pagebreak
