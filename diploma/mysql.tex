@@ -83,7 +83,29 @@
     # ...
     \end{minted}
 \end{code}
+
 \subsection{MySQL AST}
-Здесь про ParserOverlay - легковесная обертка над тяжелым antlr4 деревом + вспомогательный класс TreePath, позволяющий спускаться по дереву
+Дерево разбора, получаемое в результате парсинга, имеет довольно сложную структуру, включающую избыточную для поставленной задачи информацию. С целью упростить дерево разбора для дальнейшего его использования в рамках метода конвертации, был написан алгоритм, преобразующий его в \textit{абстрактное синтаксическое дерево} (ниже и в дальнейшем - \textbf{MySQL AST}. Каждая вершина MySQL AST будет иметь тип \mintinline{c++}{ AST } и будет содержать в себе следующую информацию: список детей (поле \mintinline{c++}{ children }), название правила (поле \mintinline{c++}{ rule_name }), которому соответсвует вершина, значения (поле \mintinline{c++}{ terminals }) и типы (поле \mintinline{c++}{  terminal_types }) терминалов, относиящихся непосредственно к вершине. 
+
+\begin{code}
+    \captionof{listing}{Структура MySQL AST}
+    \label{mysql:AST_cpp}
+    \begin{minted}[frame=single, fontsize=\footnotesize]{c++}
+class AST
+{
+public:
+    // construct AST from query string (via ANTLR parser)
+    static bool FromQuery(const std::string & query,
+            ASTPtr & result, std::string & error);
+public:
+    std::string rule_name;
+    std::vector<ASTPtr> children;
+    std::vector<std::string> terminals;
+    std::vector<TOKEN_TYPE> terminal_types;
+};
+    \end{minted}
+\end{code}
+
+MySQL AST создается рекурсивным алгоритмом (наподобие поиска в глубину), путем извлечения необходимых данных из \textit{ANTLR4} дерева разбора и сопоставления каждой его вершине новой вершины MySQL AST.
 
 \pagebreak
