@@ -96,6 +96,9 @@
 \usepackage{csquotes}
 \usepackage[dvipsnames,table,xcdraw]{xcolor}
 
+\renewcommand{\labelenumii}{\theenumii}
+\renewcommand{\theenumii}{\theenumi.\arabic{enumii}.}
+
 % Syntax highlightning
 \newenvironment{code}{\captionsetup{type=listing}}{}
 \usepackage[outputdir=result]{minted}
